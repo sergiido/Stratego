@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Stratego</title>
+	<style type="text/css">
+		#background {
+			position: absolute;
+			border: 1px solid blue;
+		}
+
+		#game {
+			position: relative;
+			border: 1px solid grey;
+		}
+	</style>
+</head>
+<body>
+
+	<div id = "container" style="display: table-row">
+		<div id = "left" style="display: table-cell">
+			<div id="background">
+				<canvas id="board"><canvas>
+			</div>
+			<div id="game">
+				<canvas id="gameCanvas"><canvas>
+			</div>
+		</div>
+		<div id = "right" style="display: table-cell;">
+			<ul id = "list">
+				<li> item 1</li>
+			</ul>
+		</div>		
+	</div>
+
+	<script src="/socket.io/socket.io.js"></script>
+
+	<script type="text/javascript">
+
+	const cellWidth = 50;
+
+	// const board = [
+	// 	[{x: 0, y: 0, figure: null}, {x: cellWidth, y: 0, figure: null}, {x: cellWidth * 2, y: 0, figure: null}, {x: cellWidth * 3, y: 0, figure: null}],
+	// 	[{x: 0, y: cellWidth, figure: null}, {x: cellWidth, y: cellWidth, figure: null}, {x: cellWidth * 2, y: cellWidth, figure: null}, {x: cellWidth * 3, y: cellWidth, figure: null}],
+	// 	[{x: 0, y: cellWidth * 2, figure: null}, {x: cellWidth, y: cellWidth * 2, figure: null}, {x: cellWidth * 2, y: cellWidth * 2, figure: null}, {x: cellWidth * 3, y: cellWidth * 2, figure: null}],
+	// 	[{x: 0, y: cellWidth * 3, figure: null}, {x: cellWidth, y: cellWidth * 3, figure: null}, {x: cellWidth * 2, y: cellWidth * 3, figure: null}, {x: cellWidth * 3, y: cellWidth * 3, figure: null}]
+	// ];
+
+	const board = [];
+	for (let row = 0; row < 10; row++) {
+		const boardRow = [];
+	  for (let col = 0; col < 10; col++) {
+		  boardRow.push({
+				x: col * cellWidth, 
+				y: row * cellWidth,
+				figure: null
+		  });
+		}
+		board.push(boardRow);
+	}
+
+	const board_cnv = document.getElementById("board");
+	const board_ctx = board_cnv.getContext("2d");
+
+	const board_size_width = board[0].length * cellWidth;
+	const board_size_height = board.length * cellWidth;
+	board_cnv.width = board_size_width;
+	board_cnv.height = board_size_height;
+
+	// let boardState = [
+	// 	[{x: 0, y: 0, figure: null, highlight: false}, {x: cellWidth, y: 0, figure: null, highlight: false}, {x: cellWidth * 2, y: 0, figure: null, highlight: false}, {x: cellWidth * 3, y: 0, figure: null, highlight: false}],
+	// 	[{x: 0, y: cellWidth, figure: null, highlight: false}, {x: cellWidth, y: cellWidth, figure: null, highlight: false}, {x: cellWidth * 2, y: cellWidth, figure: null, highlight: false}, {x: cellWidth * 3, y: cellWidth, figure: null, highlight: false}],
+	// 	[{x: 0, y: cellWidth * 2, figure: null, highlight: false}, {x: cellWidth, y: cellWidth * 2, figure: null, highlight: false}, {x: cellWidth * 2, y: cellWidth * 2, figure: null, highlight: false}, {x: cellWidth * 3, y: cellWidth * 2, figure: null, highlight: false}],
+	// 	[{x: 0, y: cellWidth * 3, figure: null, highlight: false}, {x: cellWidth, y: cellWidth * 3, figure: null, highlight: false}, {x: cellWidth * 2, y: cellWidth * 3, figure: null, highlight: false}, {x: cellWidth * 3, y: cellWidth * 3, figure: null, highlight: false}]
+	// ];
+	
+	const boardState = [];
+	for (let row = 0; row < 10; row++) {
+		const boardStateRow = [];
+	  	for (let col = 0; col < 10; col++) {
+		  	boardStateRow.push({
+				x: col * cellWidth, 
+				y: row * cellWidth,
+				figure: null
+		  	});
+		}
+		boardState.push(boardStateRow);
+	}
+
+	const game_cnv = document.getElementById("gameCanvas");
+	const game_ctx = gameCanvas.getContext("2d");
+
+	game_cnv.width = board_size_width;
+	game_cnv.height = board_size_height;
+
+	let bB = game_cnv.getBoundingClientRect();
+	let offsetX = bB.left;
+	let offsetY = bB.top;
+
+	game_cnv.onmousedown = mouseClickDown;
+	// game_cnv.onmouseup = myUp;
+	// game_cnv.onmousemove = myMove;
+
+	const Colors = {
+		red: 'OrangeRed',
+		blue: 'MediumTurquoise',
+		terrain: '#229954',
+		terrain_highlight: '#3bb16d'
+	};
+
+	const Figures = {
+		bomb: {
+			name: 'Bomb',
+			label: '💣',
+			rate: 100,
+			color: null
+		},
+		flag: {
+			name: 'Flag',
+			label: '🚩',
+			rate: 0,
+			color: 'orange',
+			isFigure: true,
+			canMove: false
+		},
+		spy: {
+			name: 'Spy',
+			label: '1',
+			rate: 1,
+			color: null,
+			isFigure: true,
+			canMove: true,
+			steps: 1
+		},
+		scout: {
+			name: 'Scout',
+			label: '2',
+			rate: 2,
+			color: null,
+			isFigure: true,
+			canMove: true,
+			steps: 10
+		},
+		miner: {
+			name: 'Miner',
+			label: '3',
+			rate: 3,
+			color: null,
+			isFigure: true,
+			canMove: true,
+			steps: 1
+		},
+		sergeant: {
+			name: 'Sergeant',
+			label: '4',
+			rate: 4,
+			color: null,
+			isFigure: true,
+			canMove: true,
+			steps: 1
+		},
+		lieutenant: {
+			name: 'Lieutenant',
+			label: '5',
+			rate: 5,
+			color: null,
+			isFigure: true,
+			canMove: true,
+			steps: 1
+		},
+		captain: {
+			name: 'Captain',
+			label: '6',
+			rate: 6,
+			color: null,
+			isFigure: true,
+			canMove: true,
+			steps: 1
+		},
+		major: {
+			name: 'Major',
+			label: '7',
+			rate: 7,
+			color: null,
+			isFigure: true,
+			canMove: true,
+			steps: 1
+		},
+		colonel: {
+			name: 'Colonel',
+			label: '8',
+			rate: 8,
+			color: null,
+			isFigure: true,
+			canMove: true,
+			steps: 1
+		},
+		general: {
+			name: 'General',
+			label: '9',
+			rate: 9,
+			color: null,
+			isFigure: true,
+			canMove: true,
+			steps: 1
+		},
+		marshall: {
+			name: 'Marshall',
+			label: '10',
+			rate: 10,
+			color: null,
+			isFigure: true,
+			canMove: true,
+			steps: 1
+		},
+		ground: {
+			name: 'Ground',
+			label: '',
+			rate: 0,
+			color: Colors.terrain,
+			isFigure: false,
+			canMove: false
+		},
+		water: {
+			name: 'Water',
+			label: '',
+			rate: 0,
+			color: '#3498DB',
+			isFigure: false,
+			canMove: false
+		}
+	};
+
+
+	class Terrain {
+	  constructor(name) {
+		this.name = name.name;
+		this.label = name.label;
+		this.color = name.color;
+	  }
+	}
+
+	class Ground extends Terrain {}
+
+	class Water extends Terrain {}
+
+	class Game {
+		figures = [];
+
+		addFigure(figure) {
+			this.figures.push(figure);
+		}
+
+		getFigures() {
+			return this.figures;
+		}
+	}
+
+	class Figure {
+		constructor(figure, color, hidden) {
+			this.name = figure.name;
+			this.label = figure.label;
+			this.rate = figure.rate;
+			this.color = color;
+			this.isFigure = figure.isFigure;
+			this.canMove = figure.canMove;
+			this.steps = figure.steps;
+			this.image = figure.image;
+			this.hidden = hidden || false;
+		}
+	}
+
+
+	class Board {
+		constructor() {
+			this.figures = Figures;
+			this.boardState = boardState;
+			this.clickedCoords = null;
+		}
+
+		getState() {
+			return this.boardState;
+		}
+
+		setFigure(row, col, figure) {
+			this.getState()[row][col].figure = figure;
+		}
+
+		isFigure(cell_coord) {
+			// console.log('isFigure: [' + cell_coord + ']');
+			console.log(this.getCellValue(cell_coord) instanceof Figure);
+			return (this.getCellValue(cell_coord) instanceof Figure) ? true : false;
+		}
+
+		getCellValue(cell_coord) {
+			console.log('getCellValue: [' + cell_coord + ']');
+			return this.getState()[cell_coord[0]][cell_coord[1]].figure;
+		}
+
+		get getClickedCoords() {
+			return this.clickedCoords;
+		}
+
+		set setClickedCoords(cell_coord) {
+			console.log('setClickedCoords: [' + cell_coord + ']');
+			this.clickedCoords = cell_coord;
+		}
+
+		highlightCell(cell_coord) {
+			console.log('highlightCell: [' + cell_coord + ']');
+			this.getState()[cell_coord[0]][cell_coord[1]].highlight = true;
+		}
+
+		resetHighlightCell() {
+			// this.getState()[cell_coord[0]][cell_coord[1]].highlight = false;
+			for (const boardRow of this.getState()) {
+			  	for (const boardCell of boardRow) {
+				  	boardCell.highlight = false;
+				}
+			}
+		}
+
+		getClickedCell(mx, my) {
+			for (const [row_index, boardRow] of this.getState().entries()) {
+			  	for (const [col_index, boardCell] of boardRow.entries()) {
+				  	if (mx > boardCell.x && mx < boardCell.x + cellWidth && my > boardCell.y && my < boardCell.y + cellWidth) {
+						// console.log('getClickedCell:' + JSON.stringify(boardCell), col_index, row_index);
+						console.log('getClickedCell:' + row_index, col_index);
+						return ([row_index, col_index]);
+					}
+				}
+			}
+		}
+
+		showFigure(figure) {
+			figure.hidden = false;
+		}
+
+		moveFigureTo(moveToCoord) {
+			console.log('moveFigureTo: [' + moveToCoord + ']');
+			let moveFrom = this.getClickedCoords;
+			let figureToMove = this.getCellValue(moveFrom);
+			let cellMoveTo = this.getCellValue(moveToCoord);
+			// console.log(cellMoveTo)
+			// console.log(moveFrom)
+			// console.log(figureToMove)
+			if (this.isFigure(moveToCoord)) {
+				if (cellMoveTo.rate === 100 && figureToMove.rate === 3) {
+					this.setFigure(moveFrom[0], moveFrom[1], null);
+					this.setFigure(moveToCoord[0], moveToCoord[1], figureToMove);
+				}	else if (cellMoveTo.rate === 10 && figureToMove.rate === 1) {
+					this.setFigure(moveFrom[0], moveFrom[1], null);
+					this.setFigure(moveToCoord[0], moveToCoord[1], figureToMove);
+				}	else if (cellMoveTo.rate < figureToMove.rate) {
+					this.setFigure(moveFrom[0], moveFrom[1], null);
+					this.setFigure(moveToCoord[0], moveToCoord[1], figureToMove);
+					
+					game.addFigure(cellMoveTo);
+					console.log(game)
+					let ul = document.getElementById("list");
+					// game.getFigures().forEach(figure => {
+						let li = document.createElement("li");
+						li.appendChild(document.createTextNode(`${cellMoveTo.color}: ${cellMoveTo.name}`));
+						ul.appendChild(li);
+					// });
+
+				} else if (cellMoveTo.rate === figureToMove.rate) {
+					this.setFigure(moveFrom[0], moveFrom[1], null);
+					this.setFigure(moveToCoord[0], moveToCoord[1], null);
+				}	else {
+					this.setFigure(moveFrom[0], moveFrom[1], null);
+				}
+			} else {
+				this.setFigure(moveFrom[0], moveFrom[1], null);
+				this.setFigure(moveToCoord[0], moveToCoord[1], figureToMove);					
+			}
+		}
+
+		getAllowedMovement(cell_coord) {
+		  	console.log('getAllowedMovement: ' + cell_coord);
+			let figure = this.getCellValue(cell_coord);
+			let allowedMovesLeft = this.getMovesLeft(figure, cell_coord[0], cell_coord[1]);
+		  	let allowedMovesRight = this.getMovesRight(figure, cell_coord[0], cell_coord[1]);
+		  	let allowedMovesTop = this.getMovesTop(figure, cell_coord[0], cell_coord[1]);
+		  	let allowedMovesDown = this.getMovesDown(figure, cell_coord[0], cell_coord[1]);
+
+		  	const allowedMovements = [...allowedMovesLeft, ...allowedMovesRight, ...allowedMovesTop, ...allowedMovesDown];
+		  	// console.log(allowedMovements)
+		  	return allowedMovements;
+	  }
+
+		getMovesLeft(figure, row, col) {
+			console.log('getMovesLeft')
+			const boardWidth = this.getState()[0].length;
+			let maxSteps = figure.steps;
+			let allowedMovesLeft = [];
+			let cellsToLeft = boardWidth-(boardWidth-col);
+			if (maxSteps > cellsToLeft) maxSteps = cellsToLeft;
+			for (let i = col - 1; i >= col - maxSteps; i--) {
+				if (this.getCellValue([row, i]) === null) {
+					allowedMovesLeft.push([row, i]);
+				} else if (this.getCellValue([row, i]) instanceof Figure && figure.color === this.getCellValue([row, i]).color) {
+					return allowedMovesLeft;
+				} else if (this.getCellValue([row, i]) instanceof Figure) {
+					allowedMovesLeft.push([row, i]);
+					return allowedMovesLeft;
+				} else {
+					return allowedMovesLeft;
+				}
+			}
+			return allowedMovesLeft;
+		}
+
+		getMovesRight(figure, row, col) {
+		  	console.log('getMovesRight')
+		  	const boardWidth = this.getState()[0].length;
+		  	let maxSteps = figure.steps;
+		  	let allowedMovesRight = [];
+		  	let cellsToRight = boardWidth-(col+1);
+		  	if (maxSteps > cellsToRight) maxSteps = cellsToRight;
+		  	for (let i = col + 1; i <= col + maxSteps; i++) {
+		  		if (this.getCellValue([row, i]) === null) {
+		  			allowedMovesRight.push([row, i]);
+		  		} else if (this.getCellValue([row, i]) instanceof Figure && figure.color === this.getCellValue([row, i]).color) {
+		  			return allowedMovesRight;
+		  		} else if (this.getCellValue([row, i]) instanceof Figure) {
+		  			allowedMovesRight.push([row, i]);
+		  			return allowedMovesRight;
+		  		} else {
+		  			return allowedMovesRight;
+		  		}
+		  	}
+		  	return allowedMovesRight;
+	  	}
+
+		getMovesTop(figure, row, col) {
+		  	console.log('getMovesTop');
+		  	const boardHeight = this.getState()[0].length;
+		  	let maxSteps = figure.steps;
+		  	let allowedMovesTop = [];
+		  	let cellsToTop = boardHeight-(boardHeight-row);
+		  	if (maxSteps > cellsToTop) maxSteps = cellsToTop;
+		  	for (let i = row - 1; i >= row - maxSteps; i--) {
+		  		if (this.getCellValue([i, col]) === null) {
+		  			allowedMovesTop.push([i, col]);
+		  		} else if (this.getCellValue([i, col]) instanceof Figure && figure.color === this.getCellValue([i, col]).color) {
+		  			return allowedMovesTop;
+		  		} else if (this.getCellValue([i, col]) instanceof Figure) {
+		  			allowedMovesTop.push([i, col]);
+		  			return allowedMovesTop;
+		  		} else {
+		  			return allowedMovesTop;
+		  		}
+		  	}
+		  	return allowedMovesTop;
+	  	}
+
+	  	getMovesDown(figure, row, col) {
+		  	console.log('getMovesDown')
+		  	const boardHeight = this.getState()[0].length;
+		  	let maxSteps = figure.steps;
+		  	let allowedMovesDown = [];
+		  	let cellsToDown = boardHeight-(row+1);
+		  	if (maxSteps > cellsToDown) maxSteps = cellsToDown;
+		  	for (let i = row + 1; i <= row + maxSteps; i++) {
+		  		if (this.getCellValue([i, col]) === null) {
+		  			allowedMovesDown.push([i, col]);
+		  		} else if (this.getCellValue([i, col]) instanceof Figure && figure.color === this.getCellValue([i, col]).color) {
+		  			return allowedMovesDown;
+		  		} else if (this.getCellValue([i, col]) instanceof Figure) {
+		  			allowedMovesDown.push([i, col]);
+		  			return allowedMovesDown;
+		  		} else {
+		  			return allowedMovesDown;
+		  		}
+		  	}
+		  	return allowedMovesDown;
+		}
+
+		updateBoard() {
+			// console.log(this.getState());
+			this.getState().forEach(boardRow => {
+				boardRow.forEach(boardCell => {
+					if (boardCell.highlight) {
+						game_ctx.fillStyle = Colors.terrain_highlight;
+						game_ctx.globalAlpha = 0.5;
+						game_ctx.fillRect(boardCell.x + 2, boardCell.y + 2, cellWidth - 3, cellWidth - 3);
+						game_ctx.globalAlpha = 1.0;
+					}
+
+					if (boardCell.figure instanceof Figure) {
+						game_ctx.beginPath();
+						game_ctx.fillStyle = boardCell.figure.color;					
+						game_ctx.roundRect(boardCell.x + 5, boardCell.y + 5, cellWidth - 10, cellWidth - 10, 5);
+						game_ctx.fill();
+
+						game_ctx.font = "bold 22px verdana, sans-serif";
+						game_ctx.textAlign = "center";
+						game_ctx.textBaseline = "middle";
+						game_ctx.fillStyle = "DarkSlateGray";
+
+						if (boardCell.figure.hidden) {
+							game_ctx.fillText('?', boardCell.x + 24, boardCell.y + 24);	
+						} else {
+							game_ctx.fillText(boardCell.figure.label, boardCell.x + 24, boardCell.y + 24);	
+						}
+					}
+
+					if (boardCell.figure instanceof Water) {
+						game_ctx.fillStyle = boardCell.figure.color;					
+						game_ctx.fillRect(boardCell.x, boardCell.y, cellWidth, cellWidth);
+					}
+
+				});
+			});
+		}
+	}
+
+
+	function mouseClickDown(e) {
+		// tell the browser we're handling this mouse event
+		e.preventDefault();
+		e.stopPropagation();
+
+		// get the current mouse position
+		let mx = parseInt(e.clientX - offsetX);
+		let my = parseInt(e.clientY - offsetY);
+		console.log('mouseClickDown: ' + mx, my);
+
+		let clickedCellCoords = playBoard.getClickedCell(mx, my);
+
+		if (playBoard.getClickedCoords === null && playBoard.isFigure(clickedCellCoords) === true) {
+			playBoard.highlightCell(clickedCellCoords);
+			playBoard.setClickedCoords = clickedCellCoords;
+			let allowedMovements = playBoard.getAllowedMovement(clickedCellCoords);
+			allowedMovements.forEach(cell => {
+	  			playBoard.highlightCell(cell);
+	  		});	
+		} else if (playBoard.getClickedCoords !== null) {
+			let allowedMovements = playBoard.getAllowedMovement(playBoard.getClickedCoords);
+			if ( JSON.stringify(allowedMovements).includes(JSON.stringify(clickedCellCoords)) ) {
+				let isAttackedFigure = playBoard.isFigure(clickedCellCoords);
+				if (isAttackedFigure) {
+					let attackedFigure = playBoard.getCellValue(clickedCellCoords);
+					playBoard.showFigure(attackedFigure);
+				}
+
+				playBoard.moveFigureTo(clickedCellCoords);				
+			}
+
+			playBoard.resetHighlightCell();
+			playBoard.setClickedCoords = null;
+		}
+		
+		game_ctx.clearRect(0, 0, board_size_width, board_size_height);
+		playBoard.updateBoard();
+  	}
+
+
+	const playBoard = new Board();
+
+	const game = new Game();
+
+
+	function main() {					
+		let ground = new Ground(Figures.ground);
+
+		board.forEach(boardRow => {
+			boardRow.forEach(boardCell => {
+				boardCell.figure = ground;
+				board_ctx.fillStyle = boardCell.figure.color;
+				board_ctx.fillRect(boardCell.x, boardCell.y, cellWidth, cellWidth);
+				board_ctx.strokeStyle = '#95A5A6';
+				board_ctx.strokeRect(boardCell.x + 1, boardCell.y + 1, cellWidth - 1, cellWidth - 1);
+			});
+		});
+		
+		// add water
+		let water = new Water(Figures.water);
+		playBoard.setFigure(4, 2, water);
+		playBoard.setFigure(4, 3, water);
+		playBoard.setFigure(5, 2, water);
+		playBoard.setFigure(5, 3, water);
+		playBoard.setFigure(4, 6, water);
+		playBoard.setFigure(4, 7, water);
+		playBoard.setFigure(5, 6, water);
+		playBoard.setFigure(5, 7, water);
+
+		// add blue team
+		const blueFlag = new Figure(Figures.flag, Colors.blue, true);
+		playBoard.setFigure(0, 3, blueFlag);
+		let blueSpy = new Figure(Figures.spy, Colors.blue, true);
+		playBoard.setFigure(2, 3, blueSpy);
+		let blueScout = new Figure(Figures.scout, Colors.blue, true);
+		playBoard.setFigure(2, 2, blueScout);
+		const blueMiner = new Figure(Figures.miner, Colors.blue, true);
+		playBoard.setFigure(2 , 6, blueMiner);
+		const blueMarshall = new Figure(Figures.marshall, Colors.blue, true);
+		playBoard.setFigure(3, 7, blueMarshall);
+		let blueBomb = new Figure(Figures.bomb, Colors.blue, true);
+		playBoard.setFigure(3, 5, blueBomb);
+
+		// add red team
+		const redFlag = new Figure(Figures.flag, Colors.red);
+		playBoard.setFigure(9, 6, redFlag);
+		const redSpy = new Figure(Figures.spy, Colors.red);
+		playBoard.setFigure(6, 3, redSpy);
+		const redMiner = new Figure(Figures.miner, Colors.red);
+		playBoard.setFigure(6, 5, redMiner);
+		let redScout = new Figure(Figures.scout, Colors.red);
+		playBoard.setFigure(7, 4, redScout);
+		const redMarshall = new Figure(Figures.marshall, Colors.red);
+		playBoard.setFigure(6, 7, redMarshall);
+
+		playBoard.updateBoard();
+	}
+
+	main();
+
+	</script>
+</body>
+</html>
